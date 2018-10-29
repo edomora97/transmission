@@ -57,6 +57,8 @@ struct tr_ctor
     tr_file_index_t normalSize;
     tr_file_index_t* high;
     tr_file_index_t highSize;
+
+    int64_t ownerId;
 };
 
 /***
@@ -459,6 +461,14 @@ void tr_ctorSetBandwidthPriority(tr_ctor* ctor, tr_priority_t priority)
 tr_priority_t tr_ctorGetBandwidthPriority(tr_ctor const* ctor)
 {
     return ctor->bandwidthPriority;
+}
+
+void tr_ctorSetOwnerId(tr_ctor* ctor, int64_t ownerId) {
+    ctor->ownerId = ownerId;
+}
+
+int64_t tr_ctorGetOwnerId(tr_ctor const* ctor) {
+    return ctor->ownerId;
 }
 
 /***

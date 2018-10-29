@@ -153,6 +153,7 @@ set(${PROJECT_NAME}_PRIVATE_HEADERS
     ptrarray.h
     resume.h
     rpc-server.h
+    rpc-user.h
     session.h
     subprocess.h
     stats.h

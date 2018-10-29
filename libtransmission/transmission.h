@@ -43,6 +43,7 @@ typedef struct tr_ctor tr_ctor;
 typedef struct tr_info tr_info;
 typedef struct tr_torrent tr_torrent;
 typedef struct tr_session tr_session;
+typedef struct tr_rpc_user tr_rpc_user;
 
 struct tr_error;
 struct tr_variant;
@@ -257,6 +258,16 @@ void tr_ctorSetBandwidthPriority(tr_ctor* ctor, tr_priority_t priority);
  * @brief Get the torrent's bandwidth priority.
  */
 tr_priority_t tr_ctorGetBandwidthPriority(tr_ctor const* ctor);
+
+/**
+ * @brief Set the torrent's owner id.
+ */
+void tr_ctorSetOwnerId(tr_ctor* ctor, int64_t ownerId);
+
+/**
+ * @brief Get the torrent's owner id.
+ */
+int64_t tr_ctorGetOwnerId(tr_ctor const* ctor);
 
 /**
  * @brief set the per-session incomplete download folder.
@@ -637,11 +648,13 @@ void tr_torrentSetQueuePosition(tr_torrent*, int queuePosition);
 /** @brief Convenience function for moving a batch of torrents to the front of their queue(s) */
 void tr_torrentsQueueMoveTop(tr_torrent** torrents, int torrentCount);
 
+// TODO(edomora97): duplicate these
+
 /** @brief Convenience function for moving a batch of torrents ahead one step in their queue(s) */
-void tr_torrentsQueueMoveUp(tr_torrent** torrents, int torrentCount);
+void tr_torrentsQueueMoveUp(tr_session* session, bool is_admin, tr_torrent** torrents_in, int n);
 
 /** @brief Convenience function for moving a batch of torrents back one step in their queue(s) */
-void tr_torrentsQueueMoveDown(tr_torrent** torrents, int torrentCount);
+void tr_torrentsQueueMoveDown(tr_session* session, bool is_admin, tr_torrent** torrents, int torrentCount);
 
 /** @brief Convenience function for moving a batch of torrents to the back of their queue(s) */
 void tr_torrentsQueueMoveBottom(tr_torrent** torrents, int torrentCount);

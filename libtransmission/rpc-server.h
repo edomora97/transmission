@@ -12,6 +12,10 @@
 #error only libtransmission should #include this header.
 #endif
 
+#include <zlib.h>
+
+#include "list.h"
+#include "rpcimpl.h"
 #include "variant.h"
 
 typedef struct tr_rpc_server tr_rpc_server;
@@ -59,3 +63,15 @@ void tr_rpcSetPasswordEnabled(tr_rpc_server* server, bool isEnabled);
 bool tr_rpcIsPasswordEnabled(tr_rpc_server const* session);
 
 char const* tr_rpcGetBindAddress(tr_rpc_server const* server);
+
+void tr_rpcSetUsers(tr_rpc_server* server, tr_variant* user_list);
+
+bool tr_try_login(struct tr_rpc_server* server, char* user, char* pass, tr_rpc_user** out_user);
+
+tr_rpc_user* tr_rpcGetUserFromUsername(tr_rpc_server* server, const char* username);
+
+tr_rpc_user* tr_rpcGetUserFromId(tr_rpc_server* server, int64_t id);
+
+size_t tr_rpcGetNumUsers(tr_rpc_server* server);
+
+tr_rpc_user* tr_rpcGetNthUser(tr_rpc_server* server, size_t index);

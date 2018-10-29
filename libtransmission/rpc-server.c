@@ -28,6 +28,7 @@
 #include "ptrarray.h"
 #include "rpcimpl.h"
 #include "rpc-server.h"
+#include "rpc-user.h"
 #include "session.h"
 #include "session-id.h"
 #include "tr-assert.h"
@@ -68,6 +69,9 @@ struct tr_rpc_server
 
     bool isStreamInitialized;
     z_stream stream;
+
+    tr_rpc_user* users;
+    size_t num_users;
 };
 
 #define dbgmsg(...) tr_logAddDeepNamed(MY_NAME, __VA_ARGS__)
@@ -161,7 +165,7 @@ static void extract_parts_from_multipart(struct evkeyvalq const* headers, struct
     tr_free(boundary);
 }
 
-static void handle_upload(struct evhttp_request* req, struct tr_rpc_server* server)
+static void handle_upload(struct evhttp_request* req, struct tr_rpc_server* server, tr_rpc_user* user)
 {
     if (req->type != EVHTTP_REQ_POST)
     {
@@ -239,7 +243,7 @@ static void handle_upload(struct evhttp_request* req, struct tr_rpc_server* serv
 
                 if (have_source)
                 {
-                    tr_rpc_request_exec_json(server->session, &top, NULL, NULL);
+                    tr_rpc_request_exec_json_auth(server->session, &top, NULL, NULL, user);
                 }
 
                 tr_variantFree(&top);
@@ -491,7 +495,7 @@ static void rpc_response_func(tr_session* session UNUSED, tr_variant* response, 
     tr_free(data);
 }
 
-static void handle_rpc_from_json(struct evhttp_request* req, struct tr_rpc_server* server, char const* json, size_t json_len)
+static void handle_rpc_from_json(struct evhttp_request* req, struct tr_rpc_server* server, char const* json, size_t json_len, tr_rpc_user* user)
 {
     tr_variant top;
     bool have_content = tr_variantFromJson(&top, json, json_len) == 0;
@@ -501,7 +505,7 @@ static void handle_rpc_from_json(struct evhttp_request* req, struct tr_rpc_serve
     data->req = req;
     data->server = server;
 
-    tr_rpc_request_exec_json(server->session, have_content ? &top : NULL, rpc_response_func, data);
+    tr_rpc_request_exec_json_auth(server->session, have_content ? &top : NULL, rpc_response_func, data, user);
 
     if (have_content)
     {
@@ -509,21 +513,21 @@ static void handle_rpc_from_json(struct evhttp_request* req, struct tr_rpc_serve
     }
 }
 
-static void handle_rpc(struct evhttp_request* req, struct tr_rpc_server* server)
+static void handle_rpc(struct evhttp_request* req, struct tr_rpc_server* server, tr_rpc_user* user)
 {
     char const* q;
 
     if (req->type == EVHTTP_REQ_POST)
     {
         handle_rpc_from_json(req, server, (char const*)evbuffer_pullup(req->input_buffer, -1),
-            evbuffer_get_length(req->input_buffer));
+            evbuffer_get_length(req->input_buffer), user);
     }
     else if (req->type == EVHTTP_REQ_GET && (q = strchr(req->uri, '?')) != NULL)
     {
         struct rpc_response_data* data = tr_new0(struct rpc_response_data, 1);
         data->req = req;
         data->server = server;
-        tr_rpc_request_exec_uri(server->session, q + 1, TR_BAD_SIZE, rpc_response_func, data);
+        tr_rpc_request_exec_uri(server->session, q + 1, TR_BAD_SIZE, rpc_response_func, data, user);
     }
     else
     {
@@ -618,6 +622,35 @@ static bool test_session_id(struct tr_rpc_server* server, struct evhttp_request*
     return success;
 }
 
+bool tr_try_login(struct tr_rpc_server* server, char* user, char* pass, tr_rpc_user** out_user) {
+    if (!server->isPasswordEnabled)
+    {
+        *out_user = NULL;
+        return true;
+    }
+    if (user == NULL || pass == NULL)
+    {
+        *out_user = NULL;
+        return false;
+    }
+    if (strcmp(server->username, user) == 0 && tr_ssha1_matches(server->password, pass))
+    {
+        *out_user = NULL;
+        return true;
+    }
+
+    for (size_t i = 0; i < server->num_users; i++)
+    {
+        if (strcmp(server->users[i].username, user) == 0 && tr_ssha1_matches(server->users[i].password, pass))
+        {
+            *out_user = &server->users[i];
+            return true;
+        }
+    }
+    *out_user = NULL;
+    return false;
+}
+
 static void handle_request(struct evhttp_request* req, void* arg)
 {
     struct tr_rpc_server* server = arg;
@@ -667,8 +700,8 @@ static void handle_request(struct evhttp_request* req, void* arg)
             }
         }
 
-        if (server->isPasswordEnabled && (pass == NULL || user == NULL || strcmp(server->username, user) != 0 ||
-            !tr_ssha1_matches(server->password, pass)))
+        tr_rpc_user* loggedUser;
+        if (!tr_try_login(server, user, pass, &loggedUser))
         {
             evhttp_add_header(req->output_headers, "WWW-Authenticate", "Basic realm=\"" MY_REALM "\"");
             server->loginattempts++;
@@ -694,7 +727,7 @@ static void handle_request(struct evhttp_request* req, void* arg)
         }
         else if (strcmp(req->uri + strlen(server->url), "upload") == 0)
         {
-            handle_upload(req, server);
+            handle_upload(req, server, loggedUser);
         }
         else if (!isHostnameAllowed(server, req))
         {
@@ -739,7 +772,7 @@ static void handle_request(struct evhttp_request* req, void* arg)
 
         else if (strncmp(req->uri + strlen(server->url), "rpc", 3) == 0)
         {
-            handle_rpc(req, server);
+            handle_rpc(req, server, loggedUser);
         }
         else
         {
@@ -1052,6 +1085,64 @@ char const* tr_rpcGetBindAddress(tr_rpc_server const* server)
     return tr_address_to_string(&server->bindAddress);
 }
 
+void tr_rpcSetUsers(tr_rpc_server* server, tr_variant* user_list)
+{
+    char const* str;
+    server->num_users = tr_variantListSize(user_list);
+    server->users = tr_new(tr_rpc_user, server->num_users);
+    for (size_t i = 0; i < server->num_users; i++) {
+        tr_variant* user = tr_variantListChild(user_list, i);
+        tr_rpc_user* new_user = &server->users[i];
+        if (!tr_variantDictFindInt(user, TR_KEY_id, &new_user->id)) {
+            tr_logAddError("Invalid id for user %ld", i);
+            i--;
+            server->num_users--;
+            continue;
+        }
+        if (!tr_variantDictFindStr(user, TR_KEY_username, &str, NULL)) {
+            tr_logAddError("Invalid username for user %ld", i);
+            i--;
+            server->num_users--;
+            continue;
+        } else {
+            new_user->username = strdup(str);
+        }
+        if (!tr_variantDictFindStr(user, TR_KEY_password, &str, NULL)) {
+            tr_logAddError("Invalid password for user %ld", i);
+            i--;
+            server->num_users--;
+            continue;
+        } else {
+            if (*str != '{')
+            {
+                new_user->password = tr_ssha1(strdup(str));
+            }
+            else
+            {
+                new_user->password = strdup(str);
+            }
+        }
+        if (!tr_variantDictFindBool(user, TR_KEY_admin, &new_user->isAdmin)) {
+            tr_logAddError("Invalid admin for user %ld", i);
+            i--;
+            server->num_users--;
+            continue;
+        }
+    }
+}
+
+size_t tr_rpcGetNumUsers(tr_rpc_server* server)
+{
+    return server->num_users;
+}
+
+tr_rpc_user* tr_rpcGetNthUser(tr_rpc_server* server, size_t index)
+{
+    if (index >= server->num_users)
+        return NULL;
+    return &server->users[index];
+}
+
 /****
 *****  LIFE CYCLE
 ****/
@@ -1077,6 +1168,7 @@ static void closeServer(void* vserver)
     tr_free(s->whitelistStr);
     tr_free(s->username);
     tr_free(s->password);
+    tr_free(s->users);
     tr_free(s);
 }
 
@@ -1098,6 +1190,7 @@ tr_rpc_server* tr_rpcInit(tr_session* session, tr_variant* settings)
     bool boolVal;
     int64_t i;
     char const* str;
+    tr_variant* user_list;
     tr_quark key;
     tr_address address;
 
@@ -1212,6 +1305,12 @@ tr_rpc_server* tr_rpcInit(tr_session* session, tr_variant* settings)
     else
     {
         tr_rpcSetPassword(s, str);
+    }
+
+    if (!tr_variantDictFindList(settings, TR_KEY_users, &user_list)) {
+        missing_settings_key(TR_KEY_users);
+    } else {
+        tr_rpcSetUsers(s, user_list);
     }
 
     key = TR_KEY_rpc_bind_address;

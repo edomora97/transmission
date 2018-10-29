@@ -431,6 +431,26 @@ function Inspector(controller) {
             };
 
             //
+            //  owner
+            //
+
+            if (torrents.length < 1) {
+                str = none;
+            } else {
+                str = torrents[0].getOwner();
+                for (i = 0; t = torrents[i]; ++i) {
+                    if (str != t.getOwner()) {
+                        str = mixed;
+                        break;
+                    };
+                };
+            };
+            if (!str) {
+                str = none;
+            }
+            setTextContent(e.owner_lb, str);
+
+            //
             //  origin
             //
 
@@ -836,6 +856,7 @@ function Inspector(controller) {
             data.elements.privacy_lb = $('#inspector-info-privacy')[0];
             data.elements.origin_lb = $('#inspector-info-origin')[0];
             data.elements.comment_lb = $('#inspector-info-comment')[0];
+            data.elements.owner_lb = $('#inspector-info-owner')[0];
             data.elements.name_lb = $('#torrent_inspector_name')[0];
 
             // force initial 'N/A' updates on all the pages

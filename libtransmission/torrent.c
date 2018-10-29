@@ -937,6 +937,7 @@ static void torrentInit(tr_torrent* tor, tr_ctor const* ctor)
     tor->uniqueId = nextUniqueId++;
     tor->magicNumber = TORRENT_MAGIC_NUMBER;
     tor->queuePosition = session->torrentCount;
+    tor->ownerId = tr_ctorGetOwnerId(ctor);
 
     tr_sha1(tor->obfuscatedHash, "req2", 4, tor->info.hash, SHA_DIGEST_LENGTH, NULL);
 
@@ -3697,31 +3698,72 @@ void tr_torrentsQueueMoveTop(tr_torrent** torrents_in, int n)
     tr_free(torrents);
 }
 
-void tr_torrentsQueueMoveUp(tr_torrent** torrents_in, int n)
+void tr_torrentsQueueMoveUp(tr_session* session, bool is_admin, tr_torrent** torrents_in, int n)
 {
     tr_torrent** torrents;
 
     torrents = tr_memdup(torrents_in, sizeof(tr_torrent*) * n);
     qsort(torrents, n, sizeof(tr_torrent*), compareTorrentByQueuePosition);
 
-    for (int i = 0; i < n; ++i)
+    if (is_admin)
     {
-        tr_torrentSetQueuePosition(torrents[i], torrents[i]->queuePosition - 1);
+        for (int i = 0; i < n; ++i)
+        {
+            tr_torrentSetQueuePosition(torrents[i], torrents[i]->queuePosition - 1);
+        }
     }
+    else
+    {
+        int num_torrents;
+        tr_torrent** all = tr_sessionGetTorrents(session, &num_torrents);
+        qsort(all, num_torrents, sizeof(tr_torrent*), compareTorrentByQueuePosition);
 
+        for (int i = 0; i < n; ++i)
+        {
+            int new_position = 0;
+            // move up in the user's torrent list
+            for (int j = 0; j < num_torrents && torrents[i]->queuePosition != all[j]->queuePosition; j++)
+            {
+                if (all[j]->ownerId == torrents[i]->ownerId)
+                    new_position = all[j]->queuePosition;
+            }
+            tr_torrentSetQueuePosition(torrents[i], new_position);
+        }
+    }
     tr_free(torrents);
 }
 
-void tr_torrentsQueueMoveDown(tr_torrent** torrents_in, int n)
+void tr_torrentsQueueMoveDown(tr_session* session, bool is_admin, tr_torrent** torrents_in, int n)
 {
     tr_torrent** torrents;
 
     torrents = tr_memdup(torrents_in, sizeof(tr_torrent*) * n);
     qsort(torrents, n, sizeof(tr_torrent*), compareTorrentByQueuePosition);
 
-    for (int i = n - 1; i >= 0; --i)
+    if (is_admin)
     {
-        tr_torrentSetQueuePosition(torrents[i], torrents[i]->queuePosition + 1);
+        for (int i = n - 1; i >= 0; --i)
+        {
+            tr_torrentSetQueuePosition(torrents[i], torrents[i]->queuePosition + 1);
+        }
+    }
+    else
+    {
+        int num_torrents;
+        tr_torrent** all = tr_sessionGetTorrents(session, &num_torrents);
+        qsort(all, num_torrents, sizeof(tr_torrent*), compareTorrentByQueuePosition);
+
+        for (int i = n - 1; i >= 0; --i)
+        {
+            int new_position = INT_MAX;
+            // move down in the user's torrent list
+            for (int j = num_torrents - 1; j >= 0 && torrents[i]->queuePosition != all[j]->queuePosition; j--)
+            {
+                if (all[j]->ownerId == torrents[i]->ownerId)
+                    new_position = all[j]->queuePosition;
+            }
+            tr_torrentSetQueuePosition(torrents[i], new_position);
+        }
     }
 
     tr_free(torrents);

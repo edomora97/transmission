@@ -43,6 +43,7 @@
 #include "platform-quota.h" /* tr_device_info_free() */
 #include "port-forwarding.h"
 #include "rpc-server.h"
+#include "rpc-user.h"
 #include "session.h"
 #include "session-id.h"
 #include "stats.h"
@@ -325,6 +326,17 @@ static char const* format_tos(int value)
     }
 }
 
+static void tr_sessionGetUsers(tr_session* s, tr_variant* list) {
+    for (size_t i = 0; i < tr_rpcGetNumUsers(s->rpcServer); i++) {
+        tr_rpc_user* user = tr_rpcGetNthUser(s->rpcServer, i);
+        tr_variant* d = tr_variantListAddDict(list, 4);
+        tr_variantDictAddInt(d, TR_KEY_id, user->id);
+        tr_variantDictAddStr(d, TR_KEY_username, user->username);
+        tr_variantDictAddStr(d, TR_KEY_password, user->password);
+        tr_variantDictAddBool(d, TR_KEY_admin, user->isAdmin);
+    }
+}
+
 void tr_sessionGetDefaultSettings(tr_variant* d)
 {
     TR_ASSERT(tr_variantIsDict(d));
@@ -466,6 +478,10 @@ void tr_sessionGetSettings(tr_session* s, tr_variant* d)
     tr_variantDictAddStr(d, TR_KEY_bind_address_ipv6, tr_address_to_string(&s->public_ipv6->addr));
     tr_variantDictAddBool(d, TR_KEY_start_added_torrents, !tr_sessionGetPaused(s));
     tr_variantDictAddBool(d, TR_KEY_trash_original_torrent_files, tr_sessionGetDeleteSource(s));
+    tr_variantDictAddList(d, TR_KEY_users, tr_rpcGetNumUsers(s->rpcServer));
+    tr_variant* list;
+    tr_variantDictFindList(d, TR_KEY_users, &list);
+    tr_sessionGetUsers(s, list);
 }
 
 bool tr_sessionLoadSettings(tr_variant* dict, char const* configDir, char const* appName)
@@ -540,6 +556,8 @@ void tr_sessionSaveSettings(tr_session* session, char const* configDir, tr_varia
         tr_variant sessionSettings;
         tr_variantInitDict(&sessionSettings, 0);
         tr_sessionGetSettings(session, &sessionSettings);
+        // remove the original users in order to overwrite them with the hashed passwords
+        tr_variantDictRemove(&settings, TR_KEY_users);
         tr_variantMergeDicts(&settings, &sessionSettings);
         tr_variantFree(&sessionSettings);
     }

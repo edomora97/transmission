@@ -36,6 +36,7 @@ enum
     TR_KEY_added6_f, /* pex */
     TR_KEY_addedDate, /* rpc */
     TR_KEY_address, /* rpc */
+    TR_KEY_admin,
     TR_KEY_alt_speed_down, /* rpc, settings */
     TR_KEY_alt_speed_enabled, /* rpc, settings */
     TR_KEY_alt_speed_time_begin, /* rpc, settings */
@@ -212,7 +213,9 @@ enum
     TR_KEY_nodes,
     TR_KEY_nodes6,
     TR_KEY_open_dialog_dir,
+    TR_KEY_owner_id,
     TR_KEY_p,
+    TR_KEY_password,
     TR_KEY_path,
     TR_KEY_path_utf_8,
     TR_KEY_paused,
@@ -390,6 +393,8 @@ enum
     TR_KEY_use_global_speed_limit,
     TR_KEY_use_speed_limit,
     TR_KEY_user_has_given_informed_consent,
+    TR_KEY_username,
+    TR_KEY_users,
     TR_KEY_ut_comment,
     TR_KEY_ut_holepunch,
     TR_KEY_ut_metadata,

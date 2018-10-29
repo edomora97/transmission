@@ -61,6 +61,7 @@ Torrent.Fields.Stats = [
     'isStalled',
     'leftUntilDone',
     'metadataPercentComplete',
+    'ownerId',
     'peersConnected',
     'peersGettingFromUs',
     'peersSendingToUs',
@@ -205,6 +206,9 @@ Torrent.prototype = {
      ****/
 
     // simple accessors
+    getOwner: function() {
+        return this.fields.ownerId;
+    },
     getComment: function () {
         return this.fields.comment;
     },
